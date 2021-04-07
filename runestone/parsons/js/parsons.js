@@ -55,9 +55,11 @@ export default class Parsons extends RunestoneBase {
     constructor(opts) {
         super(opts);
         var orig = opts.orig; // entire <pre> element that will be replaced by new HTML
-        this.origElem = orig;
+        this.origElem = $(orig).find("pre")[0];
+        // Find the question text and store it in .question
+        this.question = $(orig).find(`.parsons_question`)[0];
         this.useRunestoneServices = opts.useRunestoneServices;
-        this.divid = orig.id;
+        this.divid = opts.orig.id;
         // Set the storageId (key for storing data)
         var storageId = super.localStorageKey();
         this.storageId = storageId;
@@ -65,14 +67,13 @@ export default class Parsons extends RunestoneBase {
         this.contentArray = [];
         Parsons.counter++; //    Unique identifier
         this.counterId = "parsons-" + Parsons.counter;
-        // Find the question text and store it in .question
-        this.question = null;
-        for (var i = 0; i < this.children.length; i++) {
-            if ($(this.children[i]).is("[data-question]")) {
-                this.question = this.children[i];
-                break;
-            }
-        }
+
+        // for (var i = 0; i < this.children.length; i++) {
+        //     if ($(this.children[i]).is("[data-question]")) {
+        //         this.question = this.children[i];
+        //         break;
+        //     }
+        // }
         this.initializeOptions();
         this.grader = new LineBasedGrader(this);
         this.grader.showfeedback = this.showfeedback;
@@ -234,6 +235,7 @@ export default class Parsons extends RunestoneBase {
         this.resetButton.addEventListener("click", function (event) {
             event.preventDefault();
             that.clearFeedback();
+            $(that.checkButton).prop("disabled", false);
             that.resetView();
             that.logMove("reset");
             that.setLocalStorage();
@@ -256,6 +258,13 @@ export default class Parsons extends RunestoneBase {
         $(this.messageDiv).hide();
         $(this.origElem).replaceWith(this.containerDiv);
         $(this.containerDiv).closest(".sqcontainer").css("max-width", "none");
+        if (this.containerDiv) {
+            if ($(this.question).html().match(/^\s+$/)) {
+                $(this.question).remove();
+            } else {
+                $(this.containerDiv).prepend(this.question);
+            }
+        }
     }
     // Initialize lines and solution properties
     initializeLines(text) {
@@ -1262,6 +1271,7 @@ export default class Parsons extends RunestoneBase {
             if (this.grade == "correct") {
                 this.hasSolved = true;
                 this.correct = true;
+                $(this.checkButton).prop("disabled", true);
                 localStorage.setItem(this.adaptiveId + "Solved", true);
                 this.recentAttempts = this.checkCount;
                 this.checkCount = 0;

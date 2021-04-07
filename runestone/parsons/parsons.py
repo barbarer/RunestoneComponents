@@ -33,15 +33,17 @@ def setup(app):
 
 
 TEMPLATE_START = """
-        <div class="%(divclass)s alert alert-warning parsons" style="max-width: none;">
+        <div class="%(divclass)s" style="max-width: none;"> 
+        <div data-component="parsons" id="%(divid)s" class="alert alert-warning parsons" >
         <div class="parsons_question parsons-text" >
     """
 
 TEMPLATE_END = """
         </div>
-        <pre data-component="parsons" data-question_label="%(question_label)s" id="%(divid)s" %(adaptive)s %(maxdist)s %(order)s %(noindent)s %(language)s %(numbered)s %(optional)s style="visibility: hidden;">
+        <pre  data-question_label="%(question_label)s"  %(adaptive)s %(maxdist)s %(order)s %(noindent)s %(language)s %(numbered)s %(optional)s style="visibility: hidden;">
         %(code)s
         </pre>
+        </div>
         </div>
     """
 
@@ -195,8 +197,9 @@ class ParsonsProblem(Assessment):
         if "-----" in self.content:
             index = self.content.index("-----")
             self.options["instructions"] = self.content[:index]
-            # todo: instructions should be parsed with nested_parse
             self.options["code"] = self.content[index + 1 :]
+        else:
+            self.options["instructions"] = ["Arrange the blocks"]
 
         if "=====" in self.options["code"]:
             self.options["code"] = "\n".join(self.options["code"])

@@ -176,9 +176,9 @@ export default class Timed extends RunestoneBase {
         this.switchContainer = document.createElement("div");
         this.switchContainer.classList.add("switchcontainer");
         this.switchDiv = document.createElement("div"); // is replaced by the questions
+        this.timedDiv.appendChild(this.navDiv);
         this.timedDiv.appendChild(this.switchContainer);
         this.switchContainer.appendChild(this.switchDiv);
-        this.timedDiv.appendChild(this.navDiv);
         $(this.timedDiv).attr({
             id: "timed_Test",
             style: "display:none",
@@ -215,8 +215,9 @@ export default class Timed extends RunestoneBase {
                 $(this.finishButton).hide(); // hide the finish button for now
                 let mess = document.createElement("p");
                 mess.innerHTML =
-                    "<strong>Warning: You will lose all of your work if you close this tab or the browser.</strong>  Make sure you click the Finish Exam button to submit your work!";
+                    "<strong>Warning: You will not be able to continue the exam if you close this tab, close the window, or navigate away from this page!</strong>  Make sure you click the Finish Exam button when you are done to submit your work!";
                 this.controlDiv.appendChild(mess);
+                mess.classList.add("examwarning");
                 await this.renderTimedQuestion();
                 this.startAssessment();
             }.bind(this),
@@ -307,6 +308,14 @@ export default class Timed extends RunestoneBase {
             $(
                 "ul#pageNums > ul > li:eq(" + this.currentQuestionIndex + ")"
             ).addClass("broken");
+        }
+        if (
+            this.renderedQuestionArray[this.currentQuestionIndex].state ==
+            "exam_ended"
+        ) {
+            $(
+                "ul#pageNums > ul > li:eq(" + this.currentQuestionIndex + ")"
+            ).addClass("toolate");
         }
         if (
             this.renderedQuestionArray[this.currentQuestionIndex].question
@@ -486,6 +495,8 @@ export default class Timed extends RunestoneBase {
                 useRunestoneServices: eBookConfig.useRunestoneServices,
                 timed: true,
                 assessmentTaken: this.taken,
+                timedWrapper: this.divid,
+                initAttempts: 0,
             };
             if ($(tmpChild).children("[data-component]").length > 0) {
                 tmpChild = $(tmpChild).children("[data-component]")[0];
@@ -525,22 +536,42 @@ export default class Timed extends RunestoneBase {
         // check the renderedQuestionArray to see if it has been rendered.
         let opts = this.renderedQuestionArray[this.currentQuestionIndex];
         let currentQuestion;
-        if (opts.state === "prepared" || opts.state === "forreview") {
+        if (
+            opts.state === "prepared" ||
+            opts.state === "forreview" ||
+            (opts.state === "broken_exam" && opts.initAttempts < 3)
+        ) {
             let tmpChild = opts.orig;
             if ($(tmpChild).is("[data-component=selectquestion]")) {
-                // SelectOne is async and will replace itself in this array with
-                // the actual selected question
-                opts.rqa = this.renderedQuestionArray;
-                let newq = new SelectOne(opts);
-                this.renderedQuestionArray[this.currentQuestionIndex] = {
-                    question: newq,
-                };
-                try {
-                    await newq.initialize();
-                } catch (e) {
+                if (this.done && opts.state == "prepared") {
                     this.renderedQuestionArray[
                         this.currentQuestionIndex
-                    ].state = "broken_exam";
+                    ].state = "exam_ended";
+                } else {
+                    // SelectOne is async and will replace itself in this array with
+                    // the actual selected question
+                    opts.rqa = this.renderedQuestionArray;
+                    let newq = new SelectOne(opts);
+                    this.renderedQuestionArray[this.currentQuestionIndex] = {
+                        question: newq,
+                    };
+                    try {
+                        await newq.initialize();
+                        if (opts.state == "broken_exam") {
+                            // remove the broken class from this question if we get here.
+                            $(
+                                `ul#pageNums > ul > li:eq(${this.currentQuestionIndex})`
+                            ).removeClass("broken");
+                        }
+                    } catch (e) {
+                        opts.state = "broken_exam";
+                        this.renderedQuestionArray[
+                            this.currentQuestionIndex
+                        ] = opts;
+                        console.log(
+                            `Error initializing question: Details ${e}`
+                        );
+                    }
                 }
             } else if ($(tmpChild).is("[data-component]")) {
                 let componentKind = $(tmpChild).data("component");
@@ -562,7 +593,10 @@ export default class Timed extends RunestoneBase {
 
         if (!this.visited.includes(this.currentQuestionIndex)) {
             this.visited.push(this.currentQuestionIndex);
-            if (this.visited.length === this.renderedQuestionArray.length) {
+            if (
+                this.visited.length === this.renderedQuestionArray.length &&
+                !this.done
+            ) {
                 $(this.finishButton).show();
             }
         }
@@ -606,6 +640,7 @@ export default class Timed extends RunestoneBase {
             $(this.pauseBtn).attr("disabled", false);
             if (this.running === 0 && this.paused === 0) {
                 this.running = 1;
+                this.lastTime = Date.now();
                 $(this.timedDiv).show();
                 this.increment();
                 this.logBookEvent({
@@ -623,14 +658,28 @@ export default class Timed extends RunestoneBase {
                     JSON.stringify(storageObj)
                 );
             }
-            $(window).on("beforeunload", function (event) {
-                // this actual value gets ignored by newer browsers
-                alert("foo");
-                event.preventDefault();
-                event.returnValue =
-                    "Are you sure you want to leave?  Your work will be lost! And you will need your instructor to reset the exam!";
-                return "Are you sure you want to leave?  Your work will be lost!";
-            });
+            $(window).on(
+                "beforeunload",
+                function (event) {
+                    // this actual value gets ignored by newer browsers
+                    if (this.done) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.returnValue =
+                        "Are you sure you want to leave?  Your work will be lost! And you will need your instructor to reset the exam!";
+                    return "Are you sure you want to leave?  Your work will be lost!";
+                }.bind(this)
+            );
+            window.addEventListener(
+                "pagehide",
+                async function (event) {
+                    if (!this.done) {
+                        await this.finishAssessment();
+                        console.log("Exam exited by leaving page");
+                    }
+                }.bind(this)
+            );
         } else {
             this.handlePrevAssessment();
         }
@@ -705,12 +754,24 @@ export default class Timed extends RunestoneBase {
         if (this.running === 1 && !this.taken) {
             setTimeout(
                 function () {
+                    // When a browser loses focus, setTimeout may not be called on the
+                    // schedule expected.  Browsers are free to save power by lengthening
+                    // the interval to some longer time.  So we cannot just subtract 1
+                    // from the timeLimit we need to measure the elapsed time from the last
+                    // call to the current call and subtract that number of seconds.
+                    let currentTime = Date.now();
                     if (this.limitedTime) {
                         // If there's a time limit, count down to 0
-                        this.timeLimit--;
+                        this.timeLimit =
+                            this.timeLimit -
+                            Math.floor((currentTime - this.lastTime) / 1000);
                     } else {
-                        this.timeLimit++; // Else count up to keep track of how long it took to complete
+                        // Else count up to keep track of how long it took to complete
+                        this.timeLimit =
+                            this.timeLimit +
+                            Math.floor((currentTime - this.lastTime) / 1000);
                     }
+                    this.lastTime = currentTime;
                     localStorage.setItem(
                         eBookConfig.email + ":" + this.divid + "-time",
                         this.timeLimit
@@ -794,7 +855,7 @@ export default class Timed extends RunestoneBase {
         $(this.pauseBtn).attr("disabled", true);
         this.finishButton.disabled = true;
         $(window).off("beforeunload");
-        //
+        // turn off the pagehide listener
         let assignment_id = this.divid;
         setTimeout(function () {
             jQuery.ajax({

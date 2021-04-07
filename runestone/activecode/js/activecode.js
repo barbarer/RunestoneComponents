@@ -91,7 +91,7 @@ export class ActiveCode extends RunestoneBase {
                 doc = connection.get("chatcodes", "channels");
             }
         }
-        if (this.graderactive) {
+        if (this.graderactive || this.isTimed) {
             this.hidecode = false;
         }
         if (this.includes) {
@@ -1093,7 +1093,7 @@ Yet another is that there is an internal error.  The internal error message is: 
 
     async getIncludedCode(divid) {
         if (window.edList[divid]) {
-            return Promise.resolve(window.edList[divid].editor.getValue());
+            return window.edList[divid].editor.getValue();
         } else {
             let request = new Request(
                 `/runestone/ajax/get_datafile?course_id=${eBookConfig.course}&acid=${divid}`,
@@ -1103,7 +1103,8 @@ Yet another is that there is an internal error.  The internal error message is: 
                 }
             );
             let wresult = await fetch(request);
-            return wresult.json();
+            let obj = await wresult.json();
+            return obj.data;
         }
     }
 
@@ -1216,7 +1217,9 @@ Yet another is that there is an internal error.  The internal error message is: 
                 let urDivid = this.divid + "_unit_results";
                 if (
                     $(this.containerDiv).find(`#${urDivid}`).length == 0 &&
-                    $(this.containerDiv).find(`#${urDivid}_offscreen_unit_results`).length == 0
+                    $(this.containerDiv).find(
+                        `#${urDivid}_offscreen_unit_results`
+                    ).length == 0
                 ) {
                     let urResults = document.getElementById(urDivid);
                     this.containerDiv.appendChild(urResults);
@@ -1245,7 +1248,6 @@ Yet another is that there is an internal error.  The internal error message is: 
         if (typeof noUI !== "boolean") {
             noUI = false;
         }
-        this.isAnswered = true;
         var prog = await this.buildProg(true);
         this.saveCode = "True";
         $(this.output).text("");
