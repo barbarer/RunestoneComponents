@@ -1940,6 +1940,10 @@ export default class Parsons extends RunestoneBase {
             alert($.i18n("msg_parson_remove_incorrect"));
             this.removeDistractor(distractorToRemove);
             this.logMove("removedDistractor-" + distractorToRemove.hash());
+        } else if (this.usesIndentation()) {
+             alert("Will provide indentation");
+             this.removeIndentation();
+             this.logMove("removedIndentation");
         } else {
             var numberOfBlocks = this.numberOfBlocks(false);
             if (numberOfBlocks > 3) {
